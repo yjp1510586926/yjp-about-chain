@@ -1,0 +1,24 @@
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: InfoContract
+    network: sepolia
+    source:
+      address: "0xD7ACd2a9FD159E69Bb102A1ca21C9a3e3A5F771B" # InfoContract 合约地址
+      abi: InfoContract
+      startBlock: 7000000 # 建议替换为合约实际部署的区块号,可在 Etherscan 查看
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - InfoStored
+      abis:
+        - name: InfoContract
+          file: ./abis/InfoContract.json
+      eventHandlers:
+        - event: InfoStored(indexed address,string,string,uint256)
+          handler: handleInfoStored
+      file: ./src/mapping.ts

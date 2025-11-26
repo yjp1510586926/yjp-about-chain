@@ -1,0 +1,9 @@
+type InfoStored @entity {
+  id: ID!
+  sender: Bytes!
+  name: String!
+  data: String!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}

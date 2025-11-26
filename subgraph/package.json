@@ -1,0 +1,17 @@
+{
+  "name": "info-contract-subgraph",
+  "version": "1.0.0",
+  "description": "The Graph subgraph for InfoContract",
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "deploy": "graph deploy --studio",
+    "create-local": "graph create --node http://localhost:8020/ info-contract",
+    "remove-local": "graph remove --node http://localhost:8020/ info-contract",
+    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 info-contract"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "^0.56.0",
+    "@graphprotocol/graph-ts": "^0.31.0"
+  }
+}

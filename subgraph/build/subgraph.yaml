@@ -1,0 +1,24 @@
+specVersion: 0.0.5
+schema:
+  file: schema.graphql
+dataSources:
+  - kind: ethereum
+    name: InfoContract
+    network: sepolia
+    source:
+      address: "0xD7ACd2a9FD159E69Bb102A1ca21C9a3e3A5F771B"
+      abi: InfoContract
+      startBlock: 7000000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - InfoStored
+      abis:
+        - name: InfoContract
+          file: InfoContract/abis/InfoContract.json
+      eventHandlers:
+        - event: InfoStored(indexed address,string,string,uint256)
+          handler: handleInfoStored
+      file: InfoContract/InfoContract.wasm
