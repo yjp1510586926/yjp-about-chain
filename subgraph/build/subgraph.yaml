@@ -6,9 +6,9 @@ dataSources:
     name: InfoContract
     network: sepolia
     source:
-      address: "0xD7ACd2a9FD159E69Bb102A1ca21C9a3e3A5F771B"
+      address: "0xF7E9260E03ca2ff3f20307e8CfbA480ad1AD6175"
       abi: InfoContract
-      startBlock: 7000000
+      startBlock: 9700000
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7

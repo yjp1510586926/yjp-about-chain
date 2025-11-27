@@ -3,7 +3,7 @@
  * @Autor: yjp
  * @Date: 2025-11-26 15:29:28
  * @LastEditors: yjp
- * @LastEditTime: 2025-11-26 17:24:41
+ * @LastEditTime: 2025-11-27 10:17:03
  * @FilePath: /yjp-about-chain/src/config/contracts.ts
  */
 
@@ -63,4 +63,4 @@ export const INFO_CONTRACT_ABI = [
 
 // 你部署的数据存储合约地址 (部署后填入)
 export const INFO_CONTRACT_ADDRESS: string =
-  "0xD7ACd2a9FD159E69Bb102A1ca21C9a3e3A5F771B"; // 替换为实际部署的合约地址
+  "0xF7E9260E03ca2ff3f20307e8CfbA480ad1AD6175"; // 最新部署的合约地址
