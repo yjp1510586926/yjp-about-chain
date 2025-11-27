@@ -97,81 +97,6 @@ export function EthersReader() {
     }
   }
 
-  const [txList, setTxList] = useState<any[]>([])
-  
-  const getAddressTransactions = async () => {
-    if (!address) {
-      setError('请输入地址')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-    setTxList([])
-
-    try {
-      const provider = new ethers.JsonRpcProvider(INFURA_URL)
-      const currentBlock = await provider.getBlockNumber()
-      
-      console.log(`正在查询地址 ${address} 的最近交易...`)
-      
-      const transactions: any[] = []
-      const blocksToCheck = 20 // 只查询最近20个区块
-      
-      // 一次性获取最近20个区块
-      const promises = []
-      for (let i = 0; i < blocksToCheck; i++) {
-        promises.push(provider.getBlock(currentBlock - i, true))
-      }
-      
-      console.log(`正在查询最近 ${blocksToCheck} 个区块...`)
-      const blocks = await Promise.all(promises)
-      
-      // 遍历区块查找交易
-      for (const block of blocks) {
-        if (block && block.transactions) {
-          for (const tx of block.transactions) {
-            if (typeof tx === 'object' && tx !== null && 'hash' in tx) {
-              const transaction = tx as any
-              if (
-                transaction.from?.toLowerCase() === address.toLowerCase() ||
-                transaction.to?.toLowerCase() === address.toLowerCase()
-              ) {
-                transactions.push({
-                  hash: transaction.hash,
-                  from: transaction.from,
-                  to: transaction.to || '合约创建',
-                  value: ethers.formatEther(transaction.value || 0),
-                  blockNumber: transaction.blockNumber,
-                })
-                
-                if (transactions.length >= 10) break
-              }
-            }
-          }
-        }
-        if (transactions.length >= 10) break
-      }
-      
-      console.log('找到的交易:', transactions)
-      
-      if (transactions.length > 0) {
-        setTxList(transactions)
-      } else {
-        setError(`在最近 ${blocksToCheck} 个区块中未找到与该地址相关的交易。提示：如果该地址交易较少，请直接在下方输入交易哈希查询。`)
-      }
-    } catch (err: any) {
-      if (err.message?.includes('Too Many Requests') || err.code === -32005) {
-        setError('请求过于频繁，请稍后再试（约1分钟）')
-      } else {
-        setError(err.message || '获取交易列表失败')
-      }
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
     <div className="glass-effect border border-slate-700 rounded-2xl p-6 mb-8 hover:border-primary hover:shadow-lg hover:-translate-y-1 transition-all duration-300 animate-[fadeIn_0.5s_ease-in]">
       <div className="mb-6">
@@ -202,22 +127,14 @@ export function EthersReader() {
         />
       </div>
 
-      <div className="flex gap-4 mb-6">
+      <div className="mb-6">
         <button
           onClick={readChainData}
           disabled={loading}
-          className="flex-1 px-6 py-3 font-semibold text-white bg-gradient-primary rounded-lg shadow-md hover:shadow-lg hover:shadow-glow hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+          className="w-full px-6 py-3 font-semibold text-white bg-gradient-primary rounded-lg shadow-md hover:shadow-lg hover:shadow-glow hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
         >
           {loading ? <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" /> : '📊'}
-          读取余额
-        </button>
-        <button
-          onClick={getAddressTransactions}
-          disabled={loading}
-          className="flex-1 px-6 py-3 font-semibold bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-primary rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {loading ? <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" /> : '📜'}
-          查询交易记录
+          读取余额和区块信息
         </button>
       </div>
 
@@ -239,42 +156,6 @@ export function EthersReader() {
               <div className="text-xl font-bold text-slate-100 break-all">{item.value}</div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* 交易列表显示 */}
-      {txList.length > 0 && (
-        <div className="mb-6 p-4 bg-slate-800/30 border border-slate-700 rounded-lg">
-          <h4 className="text-lg font-semibold text-slate-200 mb-3">📋 最近交易记录 ({txList.length} 条)</h4>
-          <div className="space-y-2">
-            {txList.map((tx, idx) => (
-              <div 
-                key={idx} 
-                className="p-3 bg-slate-800/50 border border-slate-700 rounded hover:border-secondary hover:bg-slate-800 transition-all cursor-pointer"
-                onClick={() => setTxHash(tx.hash)}
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs text-slate-500 mb-1">交易哈希 (点击填入查询框)</div>
-                    <div className="text-sm text-primary-light font-mono truncate">{tx.hash}</div>
-                  </div>
-                  <div className="flex gap-4 text-xs">
-                    <div>
-                      <span className="text-slate-500">金额:</span>
-                      <span className="text-green-400 ml-1 font-semibold">{tx.value} ETH</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">区块:</span>
-                      <span className="text-slate-300 ml-1">#{tx.blockNumber}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 text-xs text-slate-500 text-center">
-            💡 点击任意交易可自动填入下方查询框，然后点击"查询交易"查看详细的十六进制数据
-          </div>
         </div>
       )}
 
