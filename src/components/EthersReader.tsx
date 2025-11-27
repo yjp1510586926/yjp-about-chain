@@ -7,6 +7,8 @@ export function EthersReader() {
   const [blockNumber, setBlockNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [txHash, setTxHash] = useState('')
+  const [txDetail, setTxDetail] = useState<any>(null)
 
   // Sepolia 测试网 RPC URL
   const INFURA_URL = 'https://sepolia.infura.io/v3/bb5ee58d9b444e87b8210309985f7a3e'
@@ -36,7 +38,68 @@ export function EthersReader() {
     }
   }
 
-  const getTransactionHistory = async () => {
+  const getTransactionDetail = async () => {
+    if (!txHash) {
+      setError('请输入交易哈希')
+      return
+    }
+
+    // 验证交易哈希格式（必须是 0x 开头的 66 个字符）
+    if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      setError('交易哈希格式不正确！交易哈希应该是 66 个字符（0x + 64位十六进制）。提示：请先点击"查询交易记录"获取交易列表。')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    setTxDetail(null)
+
+    try {
+      const provider = new ethers.JsonRpcProvider(INFURA_URL)
+      
+      console.log('正在查询交易:', txHash)
+      
+      // 获取交易详情
+      const tx = await provider.getTransaction(txHash)
+      
+      if (!tx) {
+        setError('未找到该交易，请检查交易哈希是否正确')
+        return
+      }
+
+      // 获取交易收据（包含状态）
+      const receipt = await provider.getTransactionReceipt(txHash)
+      
+      // 获取区块信息（用于获取时间戳）
+      const block = tx.blockNumber ? await provider.getBlock(tx.blockNumber) : null
+      
+      const detail = {
+        hash: tx.hash,
+        from: tx.from,
+        to: tx.to || '合约创建',
+        value: ethers.formatEther(tx.value),
+        blockNumber: tx.blockNumber || '待确认',
+        data: tx.data,
+        gasPrice: tx.gasPrice ? ethers.formatUnits(tx.gasPrice, 'gwei') : '0',
+        gasLimit: tx.gasLimit.toString(),
+        nonce: tx.nonce,
+        status: receipt ? (receipt.status === 1 ? '成功' : '失败') : '待确认',
+        timestamp: block?.timestamp ? new Date(block.timestamp * 1000).toLocaleString('zh-CN') : '待确认',
+      }
+      
+      console.log('交易详情:', detail)
+      setTxDetail(detail)
+    } catch (err: any) {
+      setError(err.message || '获取交易详情失败')
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const [txList, setTxList] = useState<any[]>([])
+  
+  const getAddressTransactions = async () => {
     if (!address) {
       setError('请输入地址')
       return
@@ -44,21 +107,65 @@ export function EthersReader() {
 
     setLoading(true)
     setError('')
+    setTxList([])
 
     try {
       const provider = new ethers.JsonRpcProvider(INFURA_URL)
       const currentBlock = await provider.getBlockNumber()
-      const fromBlock = currentBlock - 10000
-      const toBlock = currentBlock
-
-      console.log(`正在查询区块 ${fromBlock} 到 ${toBlock} 的交易记录...`)
       
-      const filter = { fromBlock, toBlock, address: address }
-      const logs = await provider.getLogs(filter)
-      console.log('找到的交易记录:', logs)
-      alert(`找到 ${logs.length} 条交易记录,请查看控制台`)
+      console.log(`正在查询地址 ${address} 的最近交易...`)
+      
+      const transactions: any[] = []
+      const blocksToCheck = 20 // 只查询最近20个区块
+      
+      // 一次性获取最近20个区块
+      const promises = []
+      for (let i = 0; i < blocksToCheck; i++) {
+        promises.push(provider.getBlock(currentBlock - i, true))
+      }
+      
+      console.log(`正在查询最近 ${blocksToCheck} 个区块...`)
+      const blocks = await Promise.all(promises)
+      
+      // 遍历区块查找交易
+      for (const block of blocks) {
+        if (block && block.transactions) {
+          for (const tx of block.transactions) {
+            if (typeof tx === 'object' && tx !== null && 'hash' in tx) {
+              const transaction = tx as any
+              if (
+                transaction.from?.toLowerCase() === address.toLowerCase() ||
+                transaction.to?.toLowerCase() === address.toLowerCase()
+              ) {
+                transactions.push({
+                  hash: transaction.hash,
+                  from: transaction.from,
+                  to: transaction.to || '合约创建',
+                  value: ethers.formatEther(transaction.value || 0),
+                  blockNumber: transaction.blockNumber,
+                })
+                
+                if (transactions.length >= 10) break
+              }
+            }
+          }
+        }
+        if (transactions.length >= 10) break
+      }
+      
+      console.log('找到的交易:', transactions)
+      
+      if (transactions.length > 0) {
+        setTxList(transactions)
+      } else {
+        setError(`在最近 ${blocksToCheck} 个区块中未找到与该地址相关的交易。提示：如果该地址交易较少，请直接在下方输入交易哈希查询。`)
+      }
     } catch (err: any) {
-      setError(err.message || '获取交易历史失败')
+      if (err.message?.includes('Too Many Requests') || err.code === -32005) {
+        setError('请求过于频繁，请稍后再试（约1分钟）')
+      } else {
+        setError(err.message || '获取交易列表失败')
+      }
       console.error(err)
     } finally {
       setLoading(false)
@@ -95,22 +202,22 @@ export function EthersReader() {
         />
       </div>
 
-      <div className="flex gap-4 mb-6 flex-wrap">
+      <div className="flex gap-4 mb-6">
         <button
           onClick={readChainData}
           disabled={loading}
-          className="flex-1 min-w-[200px] px-6 py-3 font-semibold text-white bg-gradient-primary rounded-lg shadow-md hover:shadow-lg hover:shadow-glow hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+          className="flex-1 px-6 py-3 font-semibold text-white bg-gradient-primary rounded-lg shadow-md hover:shadow-lg hover:shadow-glow hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
         >
           {loading ? <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" /> : '📊'}
-          读取余额和区块信息
+          读取余额
         </button>
         <button
-          onClick={getTransactionHistory}
+          onClick={getAddressTransactions}
           disabled={loading}
-          className="flex-1 min-w-[200px] px-6 py-3 font-semibold bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-primary rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex-1 px-6 py-3 font-semibold bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-primary rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" /> : '📜'}
-          获取交易历史
+          查询交易记录
         </button>
       </div>
 
@@ -132,6 +239,185 @@ export function EthersReader() {
               <div className="text-xl font-bold text-slate-100 break-all">{item.value}</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 交易列表显示 */}
+      {txList.length > 0 && (
+        <div className="mb-6 p-4 bg-slate-800/30 border border-slate-700 rounded-lg">
+          <h4 className="text-lg font-semibold text-slate-200 mb-3">📋 最近交易记录 ({txList.length} 条)</h4>
+          <div className="space-y-2">
+            {txList.map((tx, idx) => (
+              <div 
+                key={idx} 
+                className="p-3 bg-slate-800/50 border border-slate-700 rounded hover:border-secondary hover:bg-slate-800 transition-all cursor-pointer"
+                onClick={() => setTxHash(tx.hash)}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-slate-500 mb-1">交易哈希 (点击填入查询框)</div>
+                    <div className="text-sm text-primary-light font-mono truncate">{tx.hash}</div>
+                  </div>
+                  <div className="flex gap-4 text-xs">
+                    <div>
+                      <span className="text-slate-500">金额:</span>
+                      <span className="text-green-400 ml-1 font-semibold">{tx.value} ETH</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">区块:</span>
+                      <span className="text-slate-300 ml-1">#{tx.blockNumber}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 text-xs text-slate-500 text-center">
+            💡 点击任意交易可自动填入下方查询框，然后点击"查询交易"查看详细的十六进制数据
+          </div>
+        </div>
+      )}
+
+      {/* 交易查询部分 */}
+      <div className="mt-8 pt-8 border-t border-slate-700">
+        <h3 className="text-xl font-bold mb-4 text-gradient">🔍 查询交易详情</h3>
+        <div className="mb-4">
+          <label className="block mb-2 text-slate-300 font-medium text-sm">交易哈希 (Transaction Hash):</label>
+          <input
+            type="text"
+            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/20 transition-all duration-300"
+            placeholder="0x..."
+            value={txHash}
+            onChange={(e) => setTxHash(e.target.value)}
+          />
+        </div>
+        <button
+          onClick={getTransactionDetail}
+          disabled={loading}
+          className="w-full px-6 py-3 font-semibold bg-gradient-secondary rounded-lg shadow-md hover:shadow-lg hover:shadow-glow hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+        >
+          {loading ? <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" /> : '🔎'}
+          查询交易
+        </button>
+      </div>
+
+
+      {/* 交易详情显示 */}
+      {txDetail && (
+        <div className="mt-6 p-6 bg-slate-800/50 border border-slate-700 rounded-lg">
+          <h4 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+            <span>📋 交易详情</span>
+            <span className={`px-2 py-1 rounded text-xs ${txDetail.status === '成功' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+              {txDetail.status}
+            </span>
+          </h4>
+          
+          <div className="space-y-3 text-sm">
+            <div className="flex items-start gap-2">
+              <span className="text-slate-500 min-w-[100px]">交易哈希:</span>
+              <a 
+                href={`https://sepolia.etherscan.io/tx/${txDetail.hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-light hover:text-primary hover:underline break-all flex-1"
+              >
+                {txDetail.hash}
+              </a>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <span className="text-slate-500">发送方:</span>
+                <div className="text-slate-300 break-all text-xs mt-1">{txDetail.from}</div>
+              </div>
+              <div>
+                <span className="text-slate-500">接收方:</span>
+                <div className="text-slate-300 break-all text-xs mt-1">{txDetail.to}</div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <span className="text-slate-500">金额:</span>
+                <div className="text-green-400 font-semibold mt-1">{txDetail.value} ETH</div>
+              </div>
+              <div>
+                <span className="text-slate-500">区块号:</span>
+                <div className="text-slate-300 mt-1">#{txDetail.blockNumber}</div>
+              </div>
+              <div>
+                <span className="text-slate-500">Gas 价格:</span>
+                <div className="text-slate-300 mt-1">{txDetail.gasPrice} Gwei</div>
+              </div>
+              <div>
+                <span className="text-slate-500">Gas 限制:</span>
+                <div className="text-slate-300 mt-1">{txDetail.gasLimit}</div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <span className="text-slate-500">Nonce:</span>
+                <span className="text-slate-300 ml-2">{txDetail.nonce}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">交易时间:</span>
+                <span className="text-slate-300 ml-2">{txDetail.timestamp}</span>
+              </div>
+            </div>
+            
+            {/* 十六进制数据 - 重点展示 */}
+            <div className="mt-4 pt-4 border-t border-slate-700">
+              <div className="text-slate-200 font-semibold mb-2 flex items-center gap-2">
+                <span>📊 交易数据 (十六进制)</span>
+                {txDetail.data === '0x' && <span className="text-xs text-slate-500">(无数据 - 普通转账)</span>}
+              </div>
+              <div className="bg-slate-900 p-4 rounded border border-slate-700 overflow-x-auto">
+                <code className="text-xs text-green-400 font-mono break-all whitespace-pre-wrap">
+                  {txDetail.data}
+                </code>
+              </div>
+              <div className="text-xs text-slate-500 mt-2">
+                数据长度: {txDetail.data.length} 字符 ({Math.floor((txDetail.data.length - 2) / 2)} 字节)
+              </div>
+              
+              {/* 数据解析 */}
+              {txDetail.data && txDetail.data !== '0x' && txDetail.data.length > 2 && (
+                <div className="mt-4 p-4 bg-slate-800/50 border border-slate-600 rounded-lg">
+                  <div className="text-slate-200 font-semibold mb-3">🔍 UTF-8 解析</div>
+                  
+                  {(() => {
+                    try {
+                      // 使用完整的 data 字段（去掉 0x）
+                      const hexData = txDetail.data.replace(/^0x/, '')
+                      if (hexData && hexData.length % 2 === 0) {
+                        const bytes = new Uint8Array(
+                          hexData.match(/.{1,2}/g).map((byte: string) => parseInt(byte, 16))
+                        )
+                        const decoder = new TextDecoder('utf-8', { fatal: false })
+                        const text = decoder.decode(bytes)
+                        // 只显示可打印字符
+                        const printable = text.replace(/[^\x20-\x7E\u4e00-\u9fa5]/g, '')
+                        if (printable) {
+                          return (
+                            <div className="bg-slate-900 px-4 py-3 rounded border border-slate-700">
+                              <div className="text-green-400 text-lg font-semibold mb-2">"{printable}"</div>
+                              <div className="text-xs text-slate-500">
+                                原始数据: {txDetail.data}
+                              </div>
+                            </div>
+                          )
+                        }
+                      }
+                    } catch (e) {
+                      // 解析失败
+                    }
+                    return <div className="text-slate-600 text-sm">无法解析为有效的 UTF-8 文本</div>
+                  })()}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
